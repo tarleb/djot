@@ -3,6 +3,7 @@
 local unpack = unpack or table.unpack
 local format = string.format
 local layout = pandoc.layout
+local template = pandoc.template
 local literal, empty, cr, concat, blankline, chomp, space, cblock, rblock,
   prefixed, nest, hang, nowrap =
   layout.literal, layout.empty, layout.cr, layout.concat, layout.blankline,
@@ -112,6 +113,7 @@ local function inlines(ils)
 end
 
 local function blocks(bs, sep)
+  sep = sep or blankline
   local dbuff = {}
   for i=1,#bs do
     local el = bs[i]
@@ -435,5 +437,13 @@ function Writer (doc, opts)
     local note = hang(blocks(footnotes[i], blankline), 4, concat{format("[^%d]:",i),space})
     table.insert(notes, note)
   end
-  return layout.render(concat{d, blankline, concat(notes, blankline)}, opts.columns)
+  local body = concat{d, blankline, concat(notes, blankline)}
+  if not opts.template or PANDOC_VERSION < 3 then
+    return layout.render(body, opts.columns)
+  else
+    local context = {body = body}
+      .. opts.variables
+      .. template.meta_to_context(doc.meta, blocks, inlines, opts)
+    return pandoc.template.apply(opts.template, context):render(opts.columns)
+  end
 end
