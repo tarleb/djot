@@ -88,37 +88,12 @@ local function render_attributes(el, isblock)
   end
 end
 
-Blocks = {}
-Blocks.mt = {}
-Blocks.mt.__index = function(tbl,key)
-  return function() io.stderr:write("Unimplemented " .. key .. "\n") end
-end
-setmetatable(Blocks, Blocks.mt)
+Writer = pandoc.make_writer()
+Blocks = Writer.Block
+Inlines = Writer.Inline
 
-Inlines = {}
-Inlines.mt = {}
-Inlines.mt.__index = function(tbl,key)
-  return function() io.stderr:write("Unimplemented " .. key .. "\n") end
-end
-setmetatable(Inlines, Inlines.mt)
-
-local function inlines(ils)
-  local buff = {}
-  for i=1,#ils do
-    local el = ils[i]
-    buff[#buff + 1] = Inlines[el.tag](el)
-  end
-  return concat(buff)
-end
-
-local function blocks(bs, sep)
-  local dbuff = {}
-  for i=1,#bs do
-    local el = bs[i]
-    dbuff[#dbuff + 1] = Blocks[el.tag](el)
-  end
-  return concat(dbuff, sep)
-end
+local inlines = Writer.Inlines
+local blocks = Writer.Blocks
 
 Blocks.Para = function(el)
   return inlines(el.content)
@@ -134,24 +109,23 @@ end
 
 Blocks.Header = function(el)
   local attr = render_attributes(el, true)
-  local result = {attr, cr, (string.rep("#", el.level)), space, inlines(el.content)}
-  return concat(result)
+  return {attr, cr, (string.rep("#", el.level)), space, inlines(el.content)}
 end
 
 Blocks.Div = function(el)
   local attr = render_attributes(el, true)
-  return concat{attr, cr, ":::", cr, blocks(el.content, blankline), cr, ":::"}
+  return {attr, cr, ":::", cr, blocks(el.content, blankline), cr, ":::"}
 end
 
 Blocks.RawBlock = function(el)
   if el.format == "djot" then
-    return concat{el.text, cr}
+    return {el.text, cr}
   else
     local ticks = 3
     el.text:gsub("(`+)", function(s) if #s >= ticks then ticks = #s + 1 end end)
     local fence = string.rep("`", ticks)
-    return concat{fence, " =" .. el.format, cr,
-                  el.text, cr, fence, cr}
+    return {fence, " =" .. el.format, cr,
+            el.text, cr, fence, cr}
   end
 end
 
@@ -310,27 +284,23 @@ Inlines.Str = function(el)
   return escape(el.text)
 end
 
-Inlines.Space = function(el)
-  return space
-end
+Inlines.Space = space
 
-Inlines.SoftBreak = function(el)
-  if PANDOC_WRITER_OPTIONS.wrap_text == "wrap-preserve" then
+Inlines.SoftBreak = function(el, opts)
+  if opts.wrap_text == "wrap-preserve" then
     return cr
   else
     return space
   end
 end
 
-Inlines.LineBreak = function(el)
-  return concat{ "\\", cr }
-end
+Inlines.LineBreak = concat{ "\\", cr }
 
 Inlines.RawInline = function(el)
   if el.format == "djot" then
     return el.text
   else
-    return concat{Inlines.Code(el), "{=", el.format, "}"}
+    return {Inlines.Code(el), "{=", el.format, "}"}
   end
 end
 
@@ -341,36 +311,35 @@ Inlines.Code = function(el)
   local start = string.rep("`", ticks + 1) .. (use_spaces and " " or "")
   local finish = (use_spaces and " " or "") .. string.rep("`", ticks + 1)
   local attr = render_attributes(el)
-  local result = { start, el.text, finish, attr }
-  return concat(result)
+  return { start, el.text, finish, attr }
 end
 
 Inlines.Emph = function(el)
-  return concat{ "_", inlines(el.content), "_" }
+  return { "_", inlines(el.content), "_" }
 end
 
 Inlines.Strong = function(el)
-  return concat{ "*", inlines(el.content), "*" }
+  return { "*", inlines(el.content), "*" }
 end
 
 Inlines.Strikeout = function(el)
-  return concat{ "{-", inlines(el.content), "-}"}
+  return { "{-", inlines(el.content), "-}"}
 end
 
 Inlines.Subscript = function(el)
-  return concat{ "{~", inlines(el.content), "~}"}
+  return { "{~", inlines(el.content), "~}"}
 end
 
 Inlines.Superscript = function(el)
-  return concat{ "{^", inlines(el.content), "^}"}
+  return { "{^", inlines(el.content), "^}"}
 end
 
 Inlines.SmallCaps = function(el)
-  return concat{ "[", inlines(el.content), "]{.smallcaps}"}
+  return { "[", inlines(el.content), "]{.smallcaps}"}
 end
 
 Inlines.Underline = function(el)
-  return concat{ "[", inlines(el.content), "]{.underline}"}
+  return { "[", inlines(el.content), "]{.underline}"}
 end
 
 Inlines.Cite = function(el)
@@ -384,12 +353,12 @@ Inlines.Math = function(el)
   else
     marker = "$"
   end
-  return concat{ marker, Inlines.Code(el) }
+  return { marker, Inlines.Code(el) }
 end
 
 Inlines.Span = function(el)
   local attr = render_attributes(el)
-  return concat{"[", inlines(el.content), "]", attr}
+  return {"[", inlines(el.content), "]", attr}
 end
 
 Inlines.Link = function(el)
@@ -398,9 +367,8 @@ Inlines.Link = function(el)
     el.title = nil
   end
   local attr = render_attributes(el)
-  local result = {"[", inlines(el.content), "](",
-                  el.target, ")", attr}
-  return concat(result)
+  return {"[", inlines(el.content), "](",
+          el.target, ")", attr}
 end
 
 Inlines.Image = function(el)
@@ -409,16 +377,15 @@ Inlines.Image = function(el)
     el.title = nil
   end
   local attr = render_attributes(el)
-  local result = {"![", inlines(el.caption), "](",
-                  el.src, ")", attr}
-  return concat(result)
+  return {"![", inlines(el.caption), "](",
+          el.src, ")", attr}
 end
 
 Inlines.Quoted = function(el)
   if el.quotetype == "DoubleQuote" then
-    return concat{'"', inlines(el.content), '"'}
+    return inlines(el.content):double_quotes()
   else
-    return concat{"'", inlines(el.content), "'"}
+    return inlines(el.content):quotes()
   end
 end
 
@@ -428,12 +395,12 @@ Inlines.Note = function(el)
   return literal(format("[^%d]", num))
 end
 
-function Writer (doc, opts)
+Writer.Pandoc = function (doc)
   local d = blocks(doc.blocks, blankline)
   local notes = {}
   for i=1,#footnotes do
     local note = hang(blocks(footnotes[i], blankline), 4, concat{format("[^%d]:",i),space})
     table.insert(notes, note)
   end
-  return layout.render(concat{d, blankline, concat(notes, blankline)}, opts.columns)
+  return {d, blankline, concat(notes, blankline)}
 end
